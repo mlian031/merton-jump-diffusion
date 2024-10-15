@@ -265,7 +265,7 @@ class MertonJumpDiffusionModel:
 
 def main():
     # Model parameters
-    s0 = 100  # initial stock price
+    s0 = 102  # initial stock price
     r = 0.05  # risk-free rate
     mu = 0.05  # drift
     lambda_ = 1  # poisson jump intensity
@@ -275,11 +275,11 @@ def main():
     t = 1  # time horizon
     steps = 252  # time steps (approximating trading days in a year)
 
-    strike_price = 100
+    strike_price = 149
     option_type = "call"
 
     N_values = [10_000, 50_000, 100_000, 500_000]  # number of simulation paths
-    M = 1000  # number of repetitions for each N
+    M = 100  # number of repetitions for each N
 
     print("Simulating using Merton's Jump Diffusion Model")
 
