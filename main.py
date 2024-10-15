@@ -3,6 +3,16 @@ from scipy.stats import norm
 from scipy.special import factorial
 import matplotlib.pyplot as pyplot
 
+"""
+This code implements an exact simulation of Merton's jump-diffusion model at fixed-dates,
+as presented in Paul Glasserman's "Monte Carlo Methods in Financial Engineering" (2003,
+Chapter 3.5).
+The model accounts for both continuous diffusion and discrete jumps in asset prices.
+
+References:
+Glasserman, Paul. "Monte Carlo Methods in Financial Engineering," 2003, Springer-Verlag,
+Chapter 3.5, "Processes with Jumps," pages 134-142.
+"""
 
 class MertonJumpDiffusionModel:
     def __init__(self, s0, r, mu, lambda_, sigma, a, b, t, steps, strike):
