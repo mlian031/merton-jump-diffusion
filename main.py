@@ -1,22 +1,11 @@
 import numpy as np
-import matplotlib.pyplot as pyplot
 from scipy.stats import norm
 from scipy.special import factorial
-
-"""
-This code implements an exact simulation of Merton's jump-diffusion model at fixed-dates,
-as presented in Paul Glasserman's "Monte Carlo Methods in Financial Engineering" (2003,
-Chapter 3.5).
-The model accounts for both continuous diffusion and discrete jumps in asset prices.
-
-References:
-Glasserman, Paul. "Monte Carlo Methods in Financial Engineering," 2003, Springer-Verlag,
-Chapter 3.5, "Processes with Jumps," pages 134-142.
-"""
+import matplotlib.pyplot as pyplot
 
 
 class MertonJumpDiffusionModel:
-    def __init__(self, s0, r, mu, lambda_, sigma, a, b, t, steps) -> None:
+    def __init__(self, s0, r, mu, lambda_, sigma, a, b, t, steps, strike):
         self.s0 = s0  # initial stock price
         self.r = r  # risk-free rate
         self.mu = mu  # drift
@@ -26,9 +15,13 @@ class MertonJumpDiffusionModel:
         self.b = b  # standard deviation of jump
         self.t = t  # time horizon
         self.steps = steps  # time steps
+        self.strike = strike
         self.dt = t / steps  # delta t, or t_k+1 - t_k
 
-    def simulate_terminal_prices(self, num_sims):
+        self.nu = b
+        self.m = np.exp(a + 0.5 * b**2)
+
+    def simulate_terminal_prices(self, num_simulations):
         """
         Simulating terminal prices as described by Glasserman in Chapter 3.5
         "Processes with Jumps"
@@ -42,14 +35,14 @@ class MertonJumpDiffusionModel:
         """
 
         Z = np.random.normal(
-            0, 1, size=num_sims
+            0, 1, num_simulations
         )  # standard random normal variable
         W_T = Z * np.sqrt(self.t)  # brownian motion
         N = np.random.poisson(
-            self.lambda_ * self.t, size=num_sims
+            self.lambda_ * self.t, size=num_simulations
         )  # random poisson variable
 
-        sum_Y = np.zeros(num_sims)
+        sum_Y = np.zeros(num_simulations)
         positive_N_indicies = (
             N > 0
         )  # no need to check for N < 0, since it won't happen
@@ -70,225 +63,185 @@ class MertonJumpDiffusionModel:
 
         return S_t
 
+    def nested_monte_carlo_option_price(
+        self, option_type="call", M=100, N=1000
+    ):
+        price_estimates = np.zeros(M)
+
+        for m in range(M):
+            terminal_prices = self.simulate_terminal_prices(N)
+
+            if option_type == "call":
+                payoffs = np.maximum(terminal_prices - self.strike, 0)
+            elif option_type == "put":
+                payoffs = np.maximum(self.strike - terminal_prices, 0)
+            else:
+                raise ValueError("Option type must be 'call' or 'put'")
+
+            price_estimates[m] = np.exp(-self.r * self.t) * np.mean(payoffs)
+
+        return price_estimates
+
     def black_scholes_price(self, S, K, T, r, sigma, option_type="call"):
         d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
 
         if option_type == "call":
-            return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-        else:  # put option
-            return K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-
-    def closed_form_price(self, strike, option_type="call", max_jumps=50):
-        """
-        closed-form solution of a European option
-        under Merton's Jump Diffusion Model.
-
-        formula adapted from:
-        https://quant.stackexchange.com/questions/33560/formula-for-merton-jump-diffusion-call-price
-        """
-
-        price = 0.0
-
-        for k in range(max_jumps + 1):
-            poisson_weight = (
-                np.exp(-self.lambda_ * self.t)
-                * (self.lambda_ * self.t) ** k
-                / factorial(k)
-            )
-            r_k = (
-                self.r
-                - self.lambda_ * self.a
-                + (k * np.log(1 + self.a)) / self.t
-            )
-            sigma_k = np.sqrt(self.sigma**2 + k * self.b**2 / self.t)
-            bs_price = self.black_scholes_price(
-                self.s0, strike, self.t, r_k, sigma_k, option_type=option_type
-            )
-            price += poisson_weight * bs_price
+            price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+        elif option_type == "put":
+            price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+        else:
+            raise ValueError("Option type must be 'call' or 'put'")
 
         return price
 
-    def plot_option_estimate(
-        self, model, N_values, M, strike_price, option_type="call"
-    ):
+    def closed_form_price(self, option_type="call", n_terms=100):
         """
-        For a given number of simulation paths, N,
-        we repeat the valuation of the option M times.
-        These M price estimates each are an average of
-        N simulated option payoffs.
+        Adapted from
+        Robert C. Merton,
+        Option pricing when underlying stock returns are discontinuous,
+        Journal of Financial Economics,
+        Volume 3, Issues 1–2,
+        1976,
+        Pages 125-144,
         """
 
-        option_prices = []
-        confidence_intervals = []
-        relative_errors = []
+        lambda_prime = self.lambda_ * self.m
+        price = 0
 
-        if option_type == "call":
-            closed_form_price = model.closed_form_price(
-                strike_price, option_type="call"
-            )
-        else:
-            closed_form_price = model.closed_form_price(
-                strike_price, option_type="put"
+        for n in range(n_terms):
+            sigma_n = np.sqrt(self.sigma**2 + n * self.nu**2 / self.t)
+            r_n = (
+                self.r
+                - self.lambda_ * (self.m - 1)
+                + n * np.log(self.m) / self.t
             )
 
-        print(
-            f"Closed-form price for a European {option_type} option: {closed_form_price}"
-        )
-
-        for N in N_values:
-            price_estimates = np.zeros(M)
-
-            # repeats the valuation of the option M times
-            # using N simulation paths
-            for m in range(M):
-                terminal_prices = model.simulate_terminal_prices(N)
-                if option_type == "call":
-                    payoffs = np.maximum(terminal_prices - strike_price, 0)
-                else:
-                    payoffs = np.maximum(strike_price - terminal_prices, 0)
-                price_estimates[m] = np.exp(-model.r * model.t) * np.mean(
-                    payoffs
-                )
-
-            avg_price = np.mean(price_estimates)
-            std_error = np.std(price_estimates, ddof=1) / np.sqrt(
-                M
-            )  # ddof = 1, default for R
-
-            relative_error = (avg_price - closed_form_price) / closed_form_price
-
-            print(
-                f"N = {N:>6}: "
-                f"Avg Price = {avg_price:.4f}, "
-                f"Std Error = {std_error:.6f}, "
-                f"Relative Error = {relative_error:.6f}"
+            bs_price = self.black_scholes_price(
+                self.s0,
+                self.strike,
+                self.t,
+                r_n,
+                sigma_n,
+                option_type=option_type,
             )
 
-            ci_lower = avg_price - 1.96 * std_error
-            ci_upper = avg_price + 1.96 * std_error
+            term = (
+                np.exp(-lambda_prime * self.t)
+                * (lambda_prime * self.t) ** n
+                / factorial(n)
+                * bs_price
+            )
+            price += term
 
-            option_prices.append(avg_price)
-            confidence_intervals.append((ci_lower, ci_upper))
-            relative_errors.append(relative_error)
+        return price
 
-        # plot the estimates
-        fig, (option_estimate_plot, relative_error_plot) = pyplot.subplots(
-            2, 1, figsize=(12, 16)
+
+def generate_convergence_graphs(model, M, N_values):
+    call_means = []
+    call_stds = []
+    put_means = []
+    put_stds = []
+
+    for n in N_values:
+        call_prices = model.nested_monte_carlo_option_price(
+            option_type="call", M=M, N=n
+        )
+        put_prices = model.nested_monte_carlo_option_price(
+            option_type="put", M=M, N=n
         )
 
-        confidence_intervals = np.array(confidence_intervals)
-        option_prices = np.array(option_prices)
+        call_means.append(np.mean(call_prices))
+        call_stds.append(np.std(call_prices))
+        put_means.append(np.mean(put_prices))
+        put_stds.append(np.std(put_prices))
 
-        option_estimate_plot.plot(
-            N_values, option_prices, label="Average option price", color="blue"
-        )
-        option_estimate_plot.fill_between(
-            N_values,
-            confidence_intervals[:, 0],
-            confidence_intervals[:, 1],
-            color="lightblue",
-            alpha=0.45,
-            label="95% CI",
-        )
-        option_estimate_plot.axhline(
-            y=closed_form_price,
-            color="r",
-            linestyle="--",
-            label="Closed-form price",
-        )
+    closed_form_call = model.closed_form_price(option_type="call")
+    closed_form_put = model.closed_form_price(option_type="put")
 
-        relative_error_plot.plot(
-            N_values,
-            relative_errors,
-            label="Relative error",
-            color="green",
-            marker="o",
-        )
-        relative_error_plot.axhline(
-            y=0, color="r", linestyle="--", label="Zero error"
-        )
+    fig, (ax1, ax2) = pyplot.subplots(1, 2, figsize=(15, 6))
 
-        param_text = (
-            "Model Parameters:\n"
-            f"S0 = {model.s0:.2f}\n"
-            f"K = {strike_price:.2f}\n"
-            f"r = {model.r:.2%}\n"
-            f"μ = {model.mu:.2%}\n"
-            f"σ = {model.sigma:.2f}\n"
-            f"λ = {model.lambda_:.2f}\n"
-            f"mu_j = {model.a:.2f}\n"
-            f"sigma_j = {model.b:.2f}\n"
-            f"T = {model.t:.1f} year(s)\n"
-            f"Option type: {option_type}\n"
-            f"Closed-form price: {closed_form_price:.4f}\n"
-            f"M (fixed): {M}"
-        )
+    ax1.errorbar(N_values, call_means, yerr=call_stds, fmt="o-", capsize=5)
+    ax1.axhline(
+        y=closed_form_call,
+        color="r",
+        linestyle="--",
+        label="Closed-form solution",
+    )
+    ax1.set_xscale("log")
+    ax1.set_xlabel("Number of simulations (N)")
+    ax1.set_ylabel("Call Option Price")
+    ax1.set_title("Convergence of Call Option Price")
+    ax1.legend()
 
-        bbox_props = dict(
-            boxstyle="round,pad=0.5",
-            facecolor="white",
-            alpha=0.8,
-            edgecolor="gray",
-        )
+    ax2.errorbar(N_values, put_means, yerr=put_stds, fmt="o-", capsize=5)
+    ax2.axhline(
+        y=closed_form_put,
+        color="r",
+        linestyle="--",
+        label="Closed-form solution",
+    )
+    ax2.set_xscale("log")
+    ax2.set_xlabel("Number of simulations (N)")
+    ax2.set_ylabel("Put Option Price")
+    ax2.set_title("Convergence of Put Option Price")
+    ax2.legend()
 
-        option_estimate_plot.text(
-            0.02,
-            0.98,
-            param_text,
-            transform=option_estimate_plot.transAxes,
-            fontsize=10,
-            verticalalignment="top",
-            bbox=bbox_props,
-            family="monospace",
-        )
-
-        for plot in (option_estimate_plot, relative_error_plot):
-            plot.set_xscale("log")
-            plot.set_xlabel("Number of simulated paths (N)")
-            plot.grid(True)
-            plot.legend()
-
-        option_estimate_plot.set_ylabel("Option price")
-        option_estimate_plot.set_title(
-            "Option price estimate with confidence_intervals"
-        )
-
-        relative_error_plot.set_ylabel("Relative error")
-        relative_error_plot.set_title("Relative error vs closed-form solution")
-
-        pyplot.tight_layout()
-
-        pyplot.savefig("options_estimate.png", dpi=600, bbox_inches="tight")
-        pyplot.close()
+    pyplot.tight_layout()
+    pyplot.savefig("options-convergence.png", dpi=600)
 
 
 def main():
-    # Model parameters
-    s0 = 102  # initial stock price
-    r = 0.05  # risk-free rate
-    mu = 0.05  # drift
-    lambda_ = 1  # poisson jump intensity
-    sigma = 0.2  # volatility
-    a = -0.05  # mean jump value
-    b = 0.1  # standard deviation of jump
-    t = 1  # time horizon
-    steps = 252  # time steps (approximating trading days in a year)
+    model = MertonJumpDiffusionModel(
+        s0=100,
+        r=0.03,
+        mu=0.03,
+        lambda_=1,
+        sigma=0.4,
+        a=0.05,
+        b=0.1,
+        t=1,
+        steps=252,
+        strike=100,
+    )
 
-    strike_price = 149
-    option_type = "call"
+    M = 100
+    N = [
+        500,
+        1000,
+        2000,
+        4000,
+        8000,
+        16000,
+        32000,
+        64000,
+        128000,
+    ]  # Number of simulations for each estimate
 
-    N_values = [10_000, 50_000, 100_000, 500_000]  # number of simulation paths
-    M = 100  # number of repetitions for each N
+    for n in N:
+        call_prices = model.nested_monte_carlo_option_price(
+            option_type="call", M=M, N=n
+        )
+        put_prices = model.nested_monte_carlo_option_price(
+            option_type="put", M=M, N=n
+        )
 
-    print("Simulating using Merton's Jump Diffusion Model")
+        print(
+            f"European Call Option Price: Mean = {np.mean(call_prices):.4f}, Std = {np.std(call_prices):.4f}"
+        )
+        print(
+            f"European Put Option Price: Mean = {np.mean(put_prices):.4f}, Std = {np.std(put_prices):.4f}"
+        )
 
-    model = MertonJumpDiffusionModel(s0, r, mu, lambda_, sigma, a, b, t, steps)
+        call_price = model.closed_form_price(option_type="call")
+        put_price = model.closed_form_price(option_type="put")
 
-    # plot option estimates
-    model.plot_option_estimate(model, N_values, M, strike_price, option_type)
+        print(f"European Call Option Price: {call_price:.4f}")
+        print(f"European Put Option Price: {put_price:.4f}")
 
-    print("Simulation completed.")
+        print("---------------------")
+
+        generate_convergence_graphs(model, M, N)
 
 
 if __name__ == "__main__":
