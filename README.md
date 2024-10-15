@@ -26,9 +26,9 @@ The simulation algorithm for the terminal price $S(T)$ is as follows:
 3. If $N > 0$, generate $\log Y_1, ..., \log Y_N \sim N(a, b^2)$ and set $M = \sum_{i=1}^N \log Y_i$
 4. Calculate $S(T)$ using:
 
-   $$
-   S(T) = S(0)\exp\left((r - \frac{1}{2}\sigma^2 - \lambda(e^{a+\frac{1}{2}b^2}-1))T + \sigma\sqrt{T}Z + M\right)
-   $$
+$$
+S(T) = S(0)\exp\left((r - \frac{1}{2}\sigma^2 - \lambda(e^{a+\frac{1}{2}b^2}-1))T + \sigma\sqrt{T}Z + M\right)
+$$
 
    where $r$ is the risk-free rate.
 
