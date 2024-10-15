@@ -161,6 +161,12 @@ def generate_convergence_graphs(model, M, N_values):
 
     fig, (ax1, ax2) = pyplot.subplots(1, 2, figsize=(15, 6))
 
+    # fill between confidence intervals (commented out)
+    # ax1.plot(N_values, call_means, 'o-')
+    # ax1.fill_between(N_values, np.array(call_means) - np.array(call_stds), np.array(call_means) + np.array(call_stds), alpha=0.3)
+    # ax2.plot(N_values, put_means, 'o-')
+    # ax2.fill_between(N_values, np.array(put_means) - np.array(put_stds), np.array(put_means) + np.array(put_stds), alpha=0.3)
+
     ax1.errorbar(N_values, call_means, yerr=call_stds, fmt="o-", capsize=5)
     ax1.axhline(
         y=closed_form_call,
@@ -186,6 +192,28 @@ def generate_convergence_graphs(model, M, N_values):
     ax2.set_ylabel("Put Option Price")
     ax2.set_title("Convergence of Put Option Price")
     ax2.legend()
+
+    params_text = (
+        f"Parameters:\n"
+        f"S0 = {model.s0}\n"
+        f"K = {model.strike}\n"
+        f"r = {model.r}\n"
+        f"μ = {model.mu}\n"
+        f"λ = {model.lambda_}\n"
+        f"σ = {model.sigma}\n"
+        f"a = {model.a}\n"
+        f"b = {model.b}\n"
+        f"T = {model.t}\n"
+        f"M = {M}"
+    )
+
+    fig.text(
+        0.4,
+        0.30,
+        params_text,
+        verticalalignment="center",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
 
     pyplot.tight_layout()
     pyplot.savefig("options-convergence.png", dpi=600)
